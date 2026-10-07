@@ -1,13 +1,13 @@
-export function Logo({ claro = false }: { claro?: boolean }) {
+/* eslint-disable @next/next/no-img-element */
+export function Logo({ claro = false, alto = 28 }: { claro?: boolean; alto?: number }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="grid h-8 w-8 place-items-center rounded-md bg-marca text-lg font-black text-white">D</span>
-      <div className="leading-tight">
-        <div className={`text-base font-black tracking-wider ${claro ? "text-white" : "text-tinta"}`}>DRIVEN</div>
-        <div className={`text-[10px] font-semibold tracking-[0.2em] uppercase ${claro ? "text-zinc-400" : "text-zinc-500"}`}>
-          Garantías
-        </div>
-      </div>
-    </div>
+    <span className="inline-flex shrink-0 items-center">
+      <img
+        src="/logo-driven.png"
+        alt="Driven"
+        style={{ height: alto, width: "auto", maxWidth: "none" }}
+        className={claro ? "brightness-0 invert" : ""}
+      />
+    </span>
   );
 }

@@ -2,6 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
+import type { Prisma } from "@prisma/client";
 import { db } from "./db";
 import { esDriven } from "./constantes";
 
@@ -38,10 +39,11 @@ export async function usuarioActual() {
     if (!payload.sub) return null;
     const usuario = await db.usuario.findUnique({
       where: { id: payload.sub },
-      include: { distribuidor: true },
+      include: { distribuidor: true, sucursal: true },
     });
     if (!usuario || !usuario.activo) return null;
     if (usuario.distribuidor && !usuario.distribuidor.activo) return null;
+    if (usuario.sucursal && !usuario.sucursal.activa) return null;
     return usuario;
   } catch {
     return null;
@@ -58,22 +60,34 @@ export async function requerirUsuario() {
 
 export async function requerirDriven() {
   const usuario = await requerirUsuario();
-  if (!esDriven(usuario.rol)) redirect("/garantias");
+  if (!esDriven(usuario.rol)) redirect("/inicio");
   return usuario;
 }
 
 export async function requerirDrivenAdmin() {
   const usuario = await requerirUsuario();
-  if (usuario.rol !== "DRIVEN_ADMIN") redirect("/garantias");
+  if (usuario.rol !== "DRIVEN_ADMIN") redirect("/inicio");
   return usuario;
 }
 
-/** Filtro de Prisma que limita las garantías a las que el usuario puede ver. */
-export function filtroGarantias(usuario: UsuarioSesion) {
-  return esDriven(usuario.rol) ? {} : { distribuidorId: usuario.distribuidorId ?? "__ninguno__" };
+/** Garantías que el usuario puede ver: Driven todas, distribuidor las de su empresa o solo las de su sucursal. */
+export function filtroGarantias(usuario: UsuarioSesion): Prisma.GarantiaWhereInput {
+  if (esDriven(usuario.rol)) return {};
+  return {
+    distribuidorId: usuario.distribuidorId ?? "__ninguno__",
+    ...(usuario.sucursalId ? { sucursalId: usuario.sucursalId } : {}),
+  };
 }
 
 export async function garantiaVisible(usuario: UsuarioSesion, id: number) {
   if (!Number.isInteger(id)) return null;
   return db.garantia.findFirst({ where: { id, ...filtroGarantias(usuario) } });
+}
+
+/** Puede administrar sucursales y usuarios de esa empresa. */
+export function puedeAdministrarEmpresa(usuario: UsuarioSesion, distribuidorId: string) {
+  return (
+    usuario.rol === "DRIVEN_ADMIN" ||
+    (usuario.rol === "DIST_ADMIN" && !usuario.sucursalId && usuario.distribuidorId === distribuidorId)
+  );
 }

@@ -12,14 +12,14 @@ export async function iniciarSesion(_: EstadoForm, form: FormData): Promise<Esta
   const password = String(form.get("password") ?? "");
   if (!email || !password) return { error: "Completá email y contraseña." };
 
-  const usuario = await db.usuario.findUnique({ where: { email }, include: { distribuidor: true } });
+  const usuario = await db.usuario.findUnique({ where: { email }, include: { distribuidor: true, sucursal: true } });
   const valido = usuario && (await bcrypt.compare(password, usuario.passwordHash));
   if (!usuario || !valido) return { error: "Email o contraseña incorrectos." };
-  if (!usuario.activo || (usuario.distribuidor && !usuario.distribuidor.activo))
+  if (!usuario.activo || (usuario.distribuidor && !usuario.distribuidor.activo) || (usuario.sucursal && !usuario.sucursal.activa))
     return { error: "Tu usuario está deshabilitado. Contactá a Driven." };
 
   await crearSesion(usuario.id);
-  redirect("/");
+  redirect("/inicio");
 }
 
 export async function salir() {

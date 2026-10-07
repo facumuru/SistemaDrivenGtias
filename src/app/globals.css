@@ -1,49 +1,59 @@
 @import "tailwindcss";
 
 @theme {
-  --color-marca: #f26b1d;
-  --color-marca-oscuro: #c9520f;
-  --color-tinta: #16181d;
+  --color-marca: #a07d5d;
+  --color-marca-oscuro: #7f6247;
+  --color-marca-claro: #f4eee8;
+  --color-tinta: #222624;
+  --color-fondo: #f6f5f3;
   --font-sans: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
 }
 
 body {
-  @apply bg-zinc-100 text-zinc-900 antialiased;
+  @apply bg-fondo text-tinta antialiased;
 }
 
 @utility tarjeta {
-  @apply rounded-xl border border-zinc-200 bg-white shadow-sm;
+  @apply rounded-2xl border border-zinc-200/80 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)];
 }
 
 @utility etiqueta {
-  @apply mb-1 block text-sm font-medium text-zinc-700;
+  @apply mb-1.5 block text-sm font-medium text-zinc-700;
 }
 
 @utility campo {
-  @apply w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-marca focus:ring-2 focus:ring-marca/25 disabled:bg-zinc-100;
+  @apply w-full rounded-xl border border-zinc-300 bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-zinc-400 focus:border-tinta focus:ring-4 focus:ring-zinc-900/5 disabled:bg-zinc-100;
 }
 
 @utility btn {
-  @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60;
+  @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
 }
 
 @utility btn-primario {
+  @apply btn bg-tinta text-white hover:bg-black;
+}
+
+@utility btn-marca {
   @apply btn bg-marca text-white hover:bg-marca-oscuro;
 }
 
 @utility btn-secundario {
-  @apply btn border border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-50;
+  @apply btn border border-zinc-300 bg-white text-tinta hover:bg-zinc-50;
 }
 
-@utility btn-oscuro {
-  @apply btn bg-tinta text-white hover:bg-black;
+@utility btn-peligro {
+  @apply btn border border-red-200 bg-white text-red-700 hover:bg-red-50;
 }
 
-@layer components {
-  .tabla th {
-    @apply border-b border-zinc-200 bg-zinc-50 px-4 py-2.5 text-left text-xs font-semibold tracking-wide text-zinc-500 uppercase;
+@utility titulo-seccion {
+  @apply text-xs font-bold tracking-[0.12em] text-zinc-500 uppercase;
+}
+
+@media print {
+  .no-imprimir {
+    display: none !important;
   }
-  .tabla td {
-    @apply border-b border-zinc-100 px-4 py-3 text-sm;
+  body {
+    background: white;
   }
 }

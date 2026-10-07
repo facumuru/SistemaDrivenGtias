@@ -5,16 +5,27 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { garantiaVisible, requerirDriven, requerirUsuario } from "@/lib/auth";
 import { archivosDelForm, guardarArchivo, validarArchivo } from "@/lib/archivos";
-import { ESTADOS, RESOLUCIONES, TIPOS_DOCUMENTO, TIPOS_FALLA, esDriven } from "@/lib/constantes";
+import { campoActividad, marcarVista } from "@/lib/novedades";
+import { ACCIONES_DRIVEN, RESOLUCIONES, TIPOS_FALLA, esDriven, type Estado } from "@/lib/constantes";
 import type { EstadoForm } from "@/app/login/acciones";
 
 const texto = (form: FormData, campo: string) => String(form.get(campo) ?? "").trim();
 const opcional = (form: FormData, campo: string) => texto(form, campo) || null;
 
+function tipoPorMime(mime: string) {
+  return mime.startsWith("image/") ? "FOTO" : mime.startsWith("video/") ? "VIDEO" : "OTRO";
+}
+
 export async function crearGarantia(_: EstadoForm, form: FormData): Promise<EstadoForm> {
   const usuario = await requerirUsuario();
   if (esDriven(usuario.rol) || !usuario.distribuidorId)
     return { error: "Solo los distribuidores pueden cargar garantías." };
+
+  const sucursalId = usuario.sucursalId ?? texto(form, "sucursalId");
+  const sucursal = await db.sucursal.findFirst({
+    where: { id: sucursalId, distribuidorId: usuario.distribuidorId, activa: true },
+  });
+  if (!sucursal) return { error: "Elegí la sucursal que carga la garantía." };
 
   const productoId = texto(form, "productoId");
   const fechaCompra = texto(form, "fechaCompra");
@@ -23,7 +34,7 @@ export async function crearGarantia(_: EstadoForm, form: FormData): Promise<Esta
   const clienteNombre = texto(form, "clienteNombre");
 
   if (!productoId || !fechaCompra || !tipoFalla || !descripcionFalla || !clienteNombre)
-    return { error: "Completá todos los campos obligatorios (*)." };
+    return { error: "Faltan datos obligatorios." };
   if (!(tipoFalla in TIPOS_FALLA)) return { error: "Tipo de falla inválido." };
 
   const fecha = new Date(`${fechaCompra}T12:00:00`);
@@ -41,9 +52,11 @@ export async function crearGarantia(_: EstadoForm, form: FormData): Promise<Esta
     if (err) return { error: err };
   }
 
+  const ahora = new Date();
   const garantia = await db.garantia.create({
     data: {
       distribuidorId: usuario.distribuidorId,
+      sucursalId: sucursal.id,
       creadoPorId: usuario.id,
       productoId,
       numeroSerie: opcional(form, "numeroSerie"),
@@ -56,9 +69,9 @@ export async function crearGarantia(_: EstadoForm, form: FormData): Promise<Esta
       clienteDni: opcional(form, "clienteDni"),
       clienteTelefono: opcional(form, "clienteTelefono"),
       clienteEmail: opcional(form, "clienteEmail"),
-      eventos: {
-        create: { usuarioId: usuario.id, estadoNuevo: "CARGADA", comentario: "Garantía cargada por el distribuidor" },
-      },
+      actividadDistEn: ahora,
+      eventos: { create: { usuarioId: usuario.id, estadoNuevo: "CARGADA", comentario: `Cargada por ${sucursal.nombre}` } },
+      vistas: { create: { usuarioId: usuario.id, vistoEn: ahora } },
     },
   });
 
@@ -68,11 +81,10 @@ export async function crearGarantia(_: EstadoForm, form: FormData): Promise<Esta
   }
   for (const a of fotos) {
     const datos = await guardarArchivo(garantia.id, a);
-    const tipo = a.type.startsWith("video/") ? "VIDEO" : "FOTO";
-    await db.documento.create({ data: { ...datos, garantiaId: garantia.id, tipo, subidoPorId: usuario.id } });
+    await db.documento.create({ data: { ...datos, garantiaId: garantia.id, tipo: tipoPorMime(a.type), subidoPorId: usuario.id } });
   }
 
-  revalidatePath("/garantias");
+  revalidatePath("/", "layout");
   redirect(`/garantias/${garantia.id}?nueva=1`);
 }
 
@@ -91,54 +103,61 @@ export async function enviarMensaje(_: EstadoForm, form: FormData): Promise<Esta
   }
 
   if (mensaje) await db.mensaje.create({ data: { garantiaId: id, autorId: usuario.id, texto: mensaje } });
-
   for (const a of adjuntos) {
     const datos = await guardarArchivo(id, a);
-    const tipo = a.type.startsWith("image/") ? "FOTO" : a.type.startsWith("video/") ? "VIDEO" : "OTRO";
-    await db.documento.create({ data: { ...datos, garantiaId: id, tipo, subidoPorId: usuario.id } });
+    await db.documento.create({ data: { ...datos, garantiaId: id, tipo: tipoPorMime(a.type), subidoPorId: usuario.id } });
   }
 
-  // Cuando el distribuidor responde a un pedido de info, la garantía vuelve a revisión.
-  if (!esDriven(usuario.rol) && garantia.estado === "INFO_REQUERIDA") {
-    await db.garantia.update({ where: { id }, data: { estado: "EN_REVISION" } });
+  const respondeInfo = !esDriven(usuario.rol) && garantia.estado === "INFO_REQUERIDA";
+  await db.garantia.update({
+    where: { id },
+    data: { [campoActividad(usuario.rol)]: new Date(), ...(respondeInfo ? { estado: "EN_REVISION" } : {}) },
+  });
+  if (respondeInfo) {
     await db.evento.create({
       data: {
         garantiaId: id,
         usuarioId: usuario.id,
         estadoAnterior: "INFO_REQUERIDA",
         estadoNuevo: "EN_REVISION",
-        comentario: "El distribuidor respondió el pedido de información",
+        comentario: "El distribuidor respondió la consulta",
       },
     });
-  } else {
-    await db.garantia.update({ where: { id }, data: { actualizadoEn: new Date() } });
   }
+  await marcarVista(usuario.id, id);
 
-  revalidatePath(`/garantias/${id}`);
-  return { ok: "Enviado" };
+  revalidatePath("/", "layout");
+  return { ok: respondeInfo ? "Respuesta enviada. La garantía volvió a revisión." : "Enviado" };
 }
 
-export async function gestionarGarantia(_: EstadoForm, form: FormData): Promise<EstadoForm> {
+export async function accionDriven(_: EstadoForm, form: FormData): Promise<EstadoForm> {
   const usuario = await requerirDriven();
   const id = Number(form.get("garantiaId"));
-  const garantia = await db.garantia.findUnique({ where: { id } });
-  if (!garantia) return { error: "Garantía no encontrada." };
+  const g = await db.garantia.findUnique({ where: { id } });
+  if (!g) return { error: "Garantía no encontrada." };
 
-  const estado = texto(form, "estado");
-  if (!(estado in ESTADOS)) return { error: "Estado inválido." };
-
-  const resolucion = opcional(form, "resolucion");
-  if (resolucion && !(resolucion in RESOLUCIONES)) return { error: "Resolución inválida." };
-  if ((estado === "APROBADA" || estado === "FINALIZADA") && !resolucion && garantia.estado !== "RECHAZADA")
-    return { error: "Indicá la resolución (cambio, reparación o nota de crédito)." };
+  const destino = texto(form, "destino") as Estado;
+  const accion = ACCIONES_DRIVEN[g.estado as Estado]?.find((a) => a.destino === destino);
+  if (!accion) return { error: "Esa acción ya no está disponible. Recargá la página." };
 
   const comentario = opcional(form, "comentario");
-  if ((estado === "RECHAZADA" || estado === "INFO_REQUERIDA") && !comentario)
-    return { error: "Explicá el motivo en el comentario: el distribuidor lo va a ver." };
+  if (accion.comentarioObligatorio && !comentario) return { error: accion.ayuda ?? "Escribí un comentario." };
 
-  const montoTxt = texto(form, "montoNotaCredito").replace(/\./g, "").replace(",", ".");
-  const monto = montoTxt ? Number(montoTxt) : null;
-  if (monto !== null && Number.isNaN(monto)) return { error: "El monto de la nota de crédito no es válido." };
+  const pide = accion.pide ?? [];
+  const resolucion = pide.includes("resolucion") ? opcional(form, "resolucion") : g.resolucion;
+  if (pide.includes("resolucion")) {
+    if (!resolucion || !(resolucion in RESOLUCIONES)) return { error: "Elegí cómo se resuelve la garantía." };
+  }
+
+  const esNC = resolucion === "NOTA_CREDITO";
+  let monto: number | null = g.montoNotaCredito;
+  if (pide.includes("entrega") && esNC) {
+    const montoTxt = texto(form, "montoNotaCredito").replace(/\./g, "").replace(",", ".");
+    if (montoTxt) {
+      monto = Number(montoTxt);
+      if (Number.isNaN(monto) || monto < 0) return { error: "El monto de la nota de crédito no es válido." };
+    }
+  }
 
   const archivoNC = archivosDelForm(form, "archivoNotaCredito");
   const otros = archivosDelForm(form, "documentos");
@@ -147,46 +166,42 @@ export async function gestionarGarantia(_: EstadoForm, form: FormData): Promise<
     if (err) return { error: err };
   }
 
-  const esNC = resolucion === "NOTA_CREDITO";
+  const entrega = pide.includes("entrega");
   await db.garantia.update({
     where: { id },
     data: {
-      estado,
-      resolucion: estado === "RECHAZADA" ? null : resolucion ?? garantia.resolucion,
-      motivoResolucion: esNC ? opcional(form, "motivoResolucion") : garantia.motivoResolucion,
-      diagnostico: opcional(form, "diagnostico") ?? garantia.diagnostico,
-      numeroNotaCredito: esNC ? opcional(form, "numeroNotaCredito") ?? garantia.numeroNotaCredito : garantia.numeroNotaCredito,
-      montoNotaCredito: esNC ? monto ?? garantia.montoNotaCredito : garantia.montoNotaCredito,
+      estado: destino,
+      resolucion: destino === "RECHAZADA" ? null : resolucion,
+      diagnostico: pide.includes("diagnostico") ? opcional(form, "diagnostico") ?? g.diagnostico : g.diagnostico,
+      motivoResolucion: esNC ? opcional(form, "motivoResolucion") ?? g.motivoResolucion : null,
+      numeroNotaCredito: entrega && esNC ? opcional(form, "numeroNotaCredito") ?? g.numeroNotaCredito : g.numeroNotaCredito,
+      montoNotaCredito: entrega && esNC ? monto : g.montoNotaCredito,
+      remitoEnvio: entrega && !esNC ? opcional(form, "remitoEnvio") ?? g.remitoEnvio : g.remitoEnvio,
+      actividadDrivenEn: new Date(),
     },
   });
 
-  const cambioEstado = estado !== garantia.estado;
-  if (cambioEstado || comentario || archivoNC.length || otros.length) {
-    await db.evento.create({
-      data: {
-        garantiaId: id,
-        usuarioId: usuario.id,
-        estadoAnterior: garantia.estado,
-        estadoNuevo: estado,
-        comentario:
-          comentario ??
-          (archivoNC.length ? "Se adjuntó la nota de crédito" : !cambioEstado ? "Se actualizaron los datos" : null),
-      },
-    });
-  }
+  await db.evento.create({
+    data: {
+      garantiaId: id,
+      usuarioId: usuario.id,
+      estadoAnterior: g.estado,
+      estadoNuevo: destino,
+      comentario: comentario ?? (destino === g.estado ? "Se actualizó la resolución" : null),
+    },
+  });
 
   for (const a of archivoNC) {
     const datos = await guardarArchivo(id, a);
     await db.documento.create({ data: { ...datos, garantiaId: id, tipo: "NOTA_CREDITO", subidoPorId: usuario.id } });
   }
-  const tipoOtros = texto(form, "tipoDocumento");
   for (const a of otros) {
     const datos = await guardarArchivo(id, a);
-    const tipo = tipoOtros in TIPOS_DOCUMENTO ? tipoOtros : "OTRO";
+    const tipo = a.type === "application/pdf" ? (entrega ? "REMITO" : "INFORME_TECNICO") : tipoPorMime(a.type);
     await db.documento.create({ data: { ...datos, garantiaId: id, tipo, subidoPorId: usuario.id } });
   }
+  await marcarVista(usuario.id, id);
 
-  revalidatePath(`/garantias/${id}`);
-  revalidatePath("/garantias");
-  return { ok: "Garantía actualizada" };
+  revalidatePath("/", "layout");
+  return { ok: "Listo" };
 }

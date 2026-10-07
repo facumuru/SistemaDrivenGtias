@@ -3,19 +3,25 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-export function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
+export function NavLink({ href, children, badge }: { href: string; children: React.ReactNode; badge?: number }) {
   const pathname = usePathname();
   const activo =
-    pathname === href || (href !== "/garantias" && pathname.startsWith(href + "/")) ||
-    (href === "/garantias" && /^\/garantias\/\d+/.test(pathname));
+    href === "/garantias"
+      ? pathname === "/garantias" || /^\/garantias\/\d+/.test(pathname)
+      : pathname === href || pathname.startsWith(href + "/");
   return (
     <Link
       href={href}
-      className={`rounded-lg px-3 py-2 text-sm font-medium whitespace-nowrap transition ${
-        activo ? "bg-marca text-white" : "hover:bg-white/10 hover:text-white"
+      className={`relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium whitespace-nowrap transition ${
+        activo ? "bg-tinta text-white" : "text-zinc-600 hover:bg-zinc-100 hover:text-tinta"
       }`}
     >
       {children}
+      {!!badge && (
+        <span className="grid h-5 min-w-5 place-items-center rounded-full bg-marca px-1.5 text-[11px] font-bold text-white">
+          {badge}
+        </span>
+      )}
     </Link>
   );
 }

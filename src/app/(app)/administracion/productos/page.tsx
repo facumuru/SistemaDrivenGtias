@@ -10,43 +10,39 @@ export default async function ProductosPage() {
     orderBy: [{ categoria: "asc" }, { nombre: "asc" }],
     include: { _count: { select: { garantias: true } } },
   });
+  const categorias = [...new Set(productos.map((p) => p.categoria))];
 
   return (
     <>
-      <Encabezado titulo="Productos" subtitulo="Catálogo disponible para cargar garantías" />
-      <div className="grid gap-6 xl:grid-cols-3">
-        <div className="tarjeta overflow-x-auto xl:col-span-2">
-          <table className="tabla w-full">
-            <thead>
-              <tr>
-                <th>Código</th>
-                <th>Producto</th>
-                <th>Categoría</th>
-                <th>Garantía</th>
-                <th>Reclamos</th>
-                <th>Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {productos.map((p) => (
-                <tr key={p.id}>
-                  <td className="font-mono text-xs">{p.codigo}</td>
-                  <td className="font-medium">{p.nombre}</td>
-                  <td>{p.categoria}</td>
-                  <td>{p.garantiaMeses} meses</td>
-                  <td>{p._count.garantias}</td>
-                  <td>
-                    <form action={alternarProducto}>
-                      <input type="hidden" name="id" value={p.id} />
-                      <button className={`text-xs font-semibold ${p.activo ? "text-emerald-700" : "text-red-600"} hover:underline`}>
-                        {p.activo ? "Activo" : "Inactivo"}
-                      </button>
-                    </form>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <Encabezado titulo="Productos" subtitulo="Catálogo que ven los distribuidores al cargar una garantía" />
+      <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+        <div className="space-y-6">
+          {categorias.map((cat) => (
+            <section key={cat}>
+              <h2 className="titulo-seccion mb-2">{cat}</h2>
+              <div className="tarjeta divide-y divide-zinc-100 overflow-hidden">
+                {productos
+                  .filter((p) => p.categoria === cat)
+                  .map((p) => (
+                    <div key={p.id} className={`flex items-center justify-between gap-3 px-5 py-3 ${p.activo ? "" : "opacity-50"}`}>
+                      <div className="min-w-0">
+                        <div className="font-semibold">{p.nombre}</div>
+                        <div className="font-mono text-xs text-zinc-500">{p.codigo} · {p.garantiaMeses} meses</div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-xs text-zinc-500">{p._count.garantias} reclamos</span>
+                        <form action={alternarProducto}>
+                          <input type="hidden" name="id" value={p.id} />
+                          <button className={`w-16 cursor-pointer text-right text-xs font-semibold hover:underline ${p.activo ? "text-emerald-700" : "text-red-600"}`}>
+                            {p.activo ? "Activo" : "Inactivo"}
+                          </button>
+                        </form>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </section>
+          ))}
         </div>
         <FormProducto />
       </div>

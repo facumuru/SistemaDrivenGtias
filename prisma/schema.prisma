@@ -8,6 +8,7 @@ datasource db {
 }
 
 // Roles: DRIVEN_ADMIN, DRIVEN_TECNICO, DIST_ADMIN, DIST_OPERADOR
+// Un usuario de distribuidor sin sucursal ve todas las sucursales de su empresa.
 model Usuario {
   id             String        @id @default(cuid())
   nombre         String
@@ -17,12 +18,15 @@ model Usuario {
   activo         Boolean       @default(true)
   distribuidorId String?
   distribuidor   Distribuidor? @relation(fields: [distribuidorId], references: [id])
+  sucursalId     String?
+  sucursal       Sucursal?     @relation(fields: [sucursalId], references: [id])
   creadoEn       DateTime      @default(now())
 
   garantiasCreadas Garantia[]  @relation("GarantiaCreador")
   mensajes         Mensaje[]
   eventos          Evento[]
   documentos       Documento[]
+  vistas           Vista[]
 }
 
 model Distribuidor {
@@ -31,14 +35,31 @@ model Distribuidor {
   cuit        String     @unique
   email       String?
   telefono    String?
-  direccion   String?
-  localidad   String?
-  provincia   String?
   activo      Boolean    @default(true)
   creadoEn    DateTime   @default(now())
 
+  sucursales Sucursal[]
+  usuarios   Usuario[]
+  garantias  Garantia[]
+}
+
+model Sucursal {
+  id             String       @id @default(cuid())
+  distribuidorId String
+  distribuidor   Distribuidor @relation(fields: [distribuidorId], references: [id])
+  nombre         String
+  direccion      String?
+  localidad      String?
+  provincia      String?
+  telefono       String?
+  email          String?
+  activa         Boolean      @default(true)
+  creadoEn       DateTime     @default(now())
+
   usuarios  Usuario[]
   garantias Garantia[]
+
+  @@unique([distribuidorId, nombre])
 }
 
 model Producto {
@@ -59,6 +80,8 @@ model Garantia {
   id               Int       @id @default(autoincrement())
   distribuidorId   String
   distribuidor     Distribuidor @relation(fields: [distribuidorId], references: [id])
+  sucursalId       String
+  sucursal         Sucursal  @relation(fields: [sucursalId], references: [id])
   creadoPorId      String
   creadoPor        Usuario   @relation("GarantiaCreador", fields: [creadoPorId], references: [id])
   productoId       String
@@ -76,21 +99,26 @@ model Garantia {
   clienteTelefono  String?
   clienteEmail     String?
 
-  estado           String    @default("CARGADA")
-  resolucion       String?
-  motivoResolucion String?
-  diagnostico      String?
+  estado            String    @default("CARGADA")
+  resolucion        String?
+  motivoResolucion  String?
+  diagnostico       String?
   numeroNotaCredito String?
-  montoNotaCredito Float?
+  montoNotaCredito  Float?
+  remitoEnvio       String?
 
-  creadoEn         DateTime  @default(now())
-  actualizadoEn    DateTime  @updatedAt
+  actividadDrivenEn DateTime?
+  actividadDistEn   DateTime?
+  creadoEn          DateTime  @default(now())
+  actualizadoEn     DateTime  @updatedAt
 
   documentos Documento[]
   mensajes   Mensaje[]
   eventos    Evento[]
+  vistas     Vista[]
 
   @@index([distribuidorId])
+  @@index([sucursalId])
   @@index([estado])
 }
 
@@ -129,4 +157,14 @@ model Evento {
   estadoNuevo    String
   comentario     String?
   creadoEn       DateTime @default(now())
+}
+
+model Vista {
+  usuarioId  String
+  usuario    Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  garantiaId Int
+  garantia   Garantia @relation(fields: [garantiaId], references: [id], onDelete: Cascade)
+  vistoEn    DateTime @default(now())
+
+  @@id([usuarioId, garantiaId])
 }
