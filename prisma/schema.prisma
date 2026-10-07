@@ -1,0 +1,132 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Roles: DRIVEN_ADMIN, DRIVEN_TECNICO, DIST_ADMIN, DIST_OPERADOR
+model Usuario {
+  id             String        @id @default(cuid())
+  nombre         String
+  email          String        @unique
+  passwordHash   String
+  rol            String
+  activo         Boolean       @default(true)
+  distribuidorId String?
+  distribuidor   Distribuidor? @relation(fields: [distribuidorId], references: [id])
+  creadoEn       DateTime      @default(now())
+
+  garantiasCreadas Garantia[]  @relation("GarantiaCreador")
+  mensajes         Mensaje[]
+  eventos          Evento[]
+  documentos       Documento[]
+}
+
+model Distribuidor {
+  id          String     @id @default(cuid())
+  razonSocial String
+  cuit        String     @unique
+  email       String?
+  telefono    String?
+  direccion   String?
+  localidad   String?
+  provincia   String?
+  activo      Boolean    @default(true)
+  creadoEn    DateTime   @default(now())
+
+  usuarios  Usuario[]
+  garantias Garantia[]
+}
+
+model Producto {
+  id            String     @id @default(cuid())
+  codigo        String     @unique
+  nombre        String
+  categoria     String
+  garantiaMeses Int        @default(24)
+  activo        Boolean    @default(true)
+  creadoEn      DateTime   @default(now())
+
+  garantias Garantia[]
+}
+
+// Estados: CARGADA, EQUIPO_RECIBIDO, EN_REVISION, INFO_REQUERIDA, APROBADA, RECHAZADA, FINALIZADA
+// Resoluciones: CAMBIO_PRODUCTO, REPARACION, NOTA_CREDITO
+model Garantia {
+  id               Int       @id @default(autoincrement())
+  distribuidorId   String
+  distribuidor     Distribuidor @relation(fields: [distribuidorId], references: [id])
+  creadoPorId      String
+  creadoPor        Usuario   @relation("GarantiaCreador", fields: [creadoPorId], references: [id])
+  productoId       String
+  producto         Producto  @relation(fields: [productoId], references: [id])
+
+  numeroSerie      String?
+  lote             String?
+  fechaCompra      DateTime
+  numeroFactura    String?
+  tipoFalla        String
+  descripcionFalla String
+
+  clienteNombre    String
+  clienteDni       String?
+  clienteTelefono  String?
+  clienteEmail     String?
+
+  estado           String    @default("CARGADA")
+  resolucion       String?
+  motivoResolucion String?
+  diagnostico      String?
+  numeroNotaCredito String?
+  montoNotaCredito Float?
+
+  creadoEn         DateTime  @default(now())
+  actualizadoEn    DateTime  @updatedAt
+
+  documentos Documento[]
+  mensajes   Mensaje[]
+  eventos    Evento[]
+
+  @@index([distribuidorId])
+  @@index([estado])
+}
+
+// Tipos: FACTURA_COMPRA, FOTO, VIDEO, NOTA_CREDITO, INFORME_TECNICO, REMITO, OTRO
+model Documento {
+  id             String   @id @default(cuid())
+  garantiaId     Int
+  garantia       Garantia @relation(fields: [garantiaId], references: [id], onDelete: Cascade)
+  tipo           String
+  nombreOriginal String
+  ruta           String
+  mime           String
+  tamano         Int
+  subidoPorId    String
+  subidoPor      Usuario  @relation(fields: [subidoPorId], references: [id])
+  creadoEn       DateTime @default(now())
+}
+
+model Mensaje {
+  id         String   @id @default(cuid())
+  garantiaId Int
+  garantia   Garantia @relation(fields: [garantiaId], references: [id], onDelete: Cascade)
+  autorId    String
+  autor      Usuario  @relation(fields: [autorId], references: [id])
+  texto      String
+  creadoEn   DateTime @default(now())
+}
+
+model Evento {
+  id             String   @id @default(cuid())
+  garantiaId     Int
+  garantia       Garantia @relation(fields: [garantiaId], references: [id], onDelete: Cascade)
+  usuarioId      String
+  usuario        Usuario  @relation(fields: [usuarioId], references: [id])
+  estadoAnterior String?
+  estadoNuevo    String
+  comentario     String?
+  creadoEn       DateTime @default(now())
+}
